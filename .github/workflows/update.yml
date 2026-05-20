@@ -1,0 +1,94 @@
+name: Update package
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"   # every 6 hours
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-for-update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: cachix/install-nix-action@v31
+        with:
+          github_access_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get latest release
+        id: release
+        run: |
+          SRC_REPO="Korthos-Software/low_latency_layer"
+
+          # get tag of latest release
+          VERSION=$(curl -fsSL "https://api.github.com/repos/${SRC_REPO}/releases/latest" | jq -r '.tag_name')
+
+          echo "repo=${SRC_REPO}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Compare with current
+        id: compare_release
+        run: |
+          LATEST_VERSION="${{ steps.release.outputs.version }}"
+
+          # extract current version from package.nix
+          CUR_VERSION_PAT="version = \"([0-9\.]+)\";"
+          [[ $(<package.nix) =~ $CUR_VERSION_PAT ]]
+          CURRENT_VERSION="${BASH_REMATCH[1]}"
+
+          # check if version match
+          if [[ "$LATEST_VERSION" != "$CURRENT_VERSION" ]]; then
+            echo "Updating from $CURRENT_VERSION to $LATEST_VERSION"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "We are up to date"
+            echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compute hash
+        id: hash
+        if: steps.compare_release.outputs.has_update == 'true'
+        run: |
+          SRC_REPO="${{ steps.release.outputs.repo }}"
+          VERSION="${{ steps.release.outputs.version }}"
+
+          # version changed, get the source hash for nix
+          HASH=$(nix-prefetch-url --unpack "https://github.com/${SRC_REPO}/archive/refs/tags/v${VERSION}.tar.gz")
+          SRI=$(nix hash convert --hash-algo sha256 --to sri "${HASH}")
+
+          echo "hash=${SRI}" >> $GITHUB_OUTPUT
+
+      - name: Update package.nix
+        if: steps.compare_release.outputs.has_update == 'true'
+        run: |
+          VERSION="${{ steps.release.outputs.version }}"
+          HASH="${{ steps.hash.outputs.hash }}"
+
+          # update version and hash
+          sed -i 's/version = ".*"/version = "'"${VERSION#v}"'"/' package.nix
+          sed -i 's/hash = ".*"/hash = "'"${HASH}"'"/' package.nix
+
+      - name: Build package
+        id: build
+        if: steps.compare_release.outputs.has_update == 'true'
+        run: |
+          nix build
+
+      - name: Check package
+        id: check
+        if: steps.compare_release.outputs.has_update == 'true'
+        run: |
+          nix flake check
+          
+      - name: Commit changes
+        if: steps.compare_release.outputs.has_update == 'true'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+
+          git add package.nix
+
+          git commit -m "Auto update to ${{ steps.release.outputs.version }}"
+          git push
