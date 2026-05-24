@@ -32,5 +32,5 @@ Afterwards, refer to the [low_latency_layer Documentation](https://github.com/Ko
 
 #### Steam launch options example:
 ``
-	PROTON_FORCE_NVAPI=1 LOW_LATENCY_LAYER_REFLEX=1 LOW_LATENCY_LAYER_SPOOF_NVIDIA=1 %command%
+  LOW_LATENCY_LAYER=1 LOW_LATENCY_LAYER_REFLEX=1 DXVK_CONFIG="dxgi.hideAmdGpu = True" %command%
 ``
