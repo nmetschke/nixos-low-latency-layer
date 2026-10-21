@@ -47,6 +47,7 @@ jobs:
           fi
 
       - uses: cachix/install-nix-action@v31
+        if: steps.compare_release.outputs.has_update == 'true'
       - name: Compute hash
         id: hash
         if: steps.compare_release.outputs.has_update == 'true'
