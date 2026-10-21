@@ -14,7 +14,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: cachix/install-nix-action@v31
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Get latest release
@@ -47,6 +46,7 @@ jobs:
             echo "has_update=false" >> $GITHUB_OUTPUT
           fi
 
+      - uses: cachix/install-nix-action@v31
       - name: Compute hash
         id: hash
         if: steps.compare_release.outputs.has_update == 'true'
